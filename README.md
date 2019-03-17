@@ -3,7 +3,7 @@ basic CFD code with detailed document description for anyone without any skills
 ## Learn the CFD form theory to simple code with detailed docunment for basic study
 the code was implmented in C or C++ language with Visual Studio IDE, easy for comploation
 
-The finite difference method was used due to its simplicity compared with finite volume method 
+The finite difference method was used due to its simplicity compared with the finite volume method 
 for coding.
 
 Lid cavity flow was adopted for basic practice
