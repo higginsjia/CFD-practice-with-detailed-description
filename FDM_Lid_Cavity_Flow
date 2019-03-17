@@ -1,0 +1,438 @@
+/*
+date: 2019/03/13
+note:
+refer to another code from github with a documnet to find the info of 
+the original author (Benjamin Uekermann, Christoph Kowitz, Martin Schreiber).
+the code was intergrated in a single file for easy compliation and modification.
+Too much thanks for the author for sharing the code with detailed description.
+
+compile setting:
+_CRT_SECURE_NO_WARNINGS
+
+index range:
+
+x: 0-imax+1
+y: 0-jmax+1
+
+*/
+
+#include "stdafx.h"
+#include "stdio.h"
+#include "stdlib.h"
+#include <algorithm>
+#include "math.h"
+using namespace std;
+
+void init_field(double init_u,double init_v,double init_p, 
+	int nx, int ny, double* u,double*v,double*p)
+{
+	for (int i = 0; i < nx*ny; ++i)
+	{
+		u[i] = init_u;
+		v[i] = init_v;
+		p[i] = init_p;
+	}
+}
+
+void calcTimeStep(double viscosity, double max_velo, double space_step,
+	double safe_factor, double* time_step)
+{
+	double t1 = safe_factor*space_step*space_step / 4.0 / viscosity;
+	double t2 = space_step / max_velo;
+	
+	*time_step = min(t1, t2);
+}
+
+void treatBoundary(double bc_velo, int imax, int jmax, double* U,double* V)
+{
+	//x*NY+y
+	const int ny = jmax + 2;
+	int i, j;
+	for (j = 1; j <= jmax; j++){
+	
+		U[0*ny+j] = 0;
+		U[imax*ny+j] = 0;
+		
+		V[0 * ny + j] = -V[1 * ny + j];
+		V[(imax + 1)*ny + j] = -1 * V[imax*ny + j];
+	}
+
+	for (i = 1; i <= imax; i++){
+	
+		V[i*ny+0] = 0;
+		V[i*ny+jmax] = 0;
+		
+		U[i*ny + 0] = -U[i*ny + 1];
+		U[i*ny + jmax + 1] = 2.0*bc_velo - U[i*ny + jmax];
+	}
+
+//	printf("treatBoundary ");
+}
+
+void calcFG(double Re,	double alpha,	double dt,
+	double dx,	double dy,	int imax,int jmax,
+	double *U,	double *V,	double *F,	double *G)
+{
+	int i;
+	int j;
+	double du2dx;
+	double duvdy;
+	double d2udx2;
+	double d2udy2;
+
+	double dv2dy;
+	double duvdx;
+	double d2vdx2;
+	double d2vdy2;
+
+	const int ny = jmax + 2;
+
+	/*Determines the value of F according to the formula above with the help of temporary variables*/
+	for (i = 1; i < imax; i++)
+	{
+		for (j = 1; j <= jmax; j++)
+		{
+
+			d2udx2 = (U[(i + 1)*ny + j] - 2 * U[i*ny + j] + U[(i - 1)*ny + j]) / (dx * dx);
+
+			d2udy2 = (U[i*ny + j + 1] - 2 * U[i*ny + j] + U[i*ny + j - 1]) / (dy * dy);
+
+			du2dx = (1 / dx) * (((U[i*ny + j] + U[(i + 1)*ny + j]) / 2)*((U[i*ny + j] + U[(i + 1)*ny + j]) / 2)
+				- ((U[(i - 1)*ny + j] + U[i*ny + j]) / 2)*((U[(i - 1)*ny + j] + U[i*ny + j]) / 2)) +
+				alpha / dx * (abs(U[i*ny + j] + U[(i + 1)*ny + j]) / 2 * (U[i*ny + j] - U[(i + 1)*ny + j]) / 2
+				- abs(U[(i - 1)*ny + j] + U[i*ny + j]) / 2 * (U[(i - 1)*ny + j] - U[i*ny + j]) / 2);
+
+			duvdy = (1 / dy) * ((V[i*ny + j] + V[(i + 1)*ny + j]) / 2 * (U[i*ny + j] + U[i*ny + j + 1]) / 2 -
+				(V[i*ny + j - 1] + V[(i + 1)*ny + j - 1]) / 2 * (U[i*ny + j - 1] + U[i*ny + j]) / 2) +
+				alpha / dy * (abs(V[i*ny + j] + V[(i + 1)*ny + j]) / 2 * (U[i*ny + j] - U[i*ny + j + 1]) / 2 - 
+				abs(V[i*ny + j - 1] + V[(i + 1)*ny + j - 1]) / 2 * (U[i*ny + j - 1] - U[i*ny + j]) / 2);
+
+			F[i*ny + j] = U[i*ny + j] + dt * (1 / Re * ((d2udx2)+(d2udy2)) - (du2dx)-duvdy);
+
+		}
+	}
+
+	/*Determines the value of G according to the formula above with the help of temporary variables*/
+	for (i = 1; i <= imax; i++)
+	{
+		for (j = 1; j < jmax; j++)
+		{
+
+			d2vdx2 = (V[(i + 1)*ny + j] - 2 * V[i*ny + j] + V[(i - 1)*ny + j]) / (dx * dx);
+
+			d2vdy2 = (V[i*ny + j + 1] - 2 * V[i*ny + j] + V[i*ny + j - 1]) / (dy * dy);
+
+
+			duvdx = (1 / dx) * ((V[i*ny + j] + V[(i + 1)*ny + j]) / 2 * (U[i*ny + j] + U[i*ny + j + 1]) / 2 - 
+				(U[(i - 1)*ny + j] + U[(i - 1)*ny + j + 1]) / 2 * (V[(i - 1)*ny + j] + V[i*ny + j]) / 2) +
+				alpha / dx * ((V[i*ny + j] - V[(i + 1)*ny + j]) / 2 * abs(U[i*ny + j] + U[i*ny + j + 1]) / 2 -
+				abs(U[(i - 1)*ny + j] + U[(i - 1)*ny + j + 1]) / 2 * (V[(i - 1)*ny + j] - V[i*ny + j]) / 2);
+
+			dv2dy = (1 / dy) * (((V[i*ny + j] + V[i*ny + j + 1]) / 2)*((V[i*ny + j] + V[i*ny + j + 1]) / 2) -
+				((V[i*ny + j - 1] + V[i*ny + j]) / 2)* (V[i*ny + j - 1] + V[i*ny + j]) / 2) +
+				alpha / dy * (abs(V[i*ny + j] + V[i*ny + j + 1]) / 2 * (V[i*ny + j] - V[i*ny + j + 1]) / 2 -
+				abs(V[i*ny + j - 1] + V[i*ny + j]) / 2 * (V[i*ny + j - 1] - V[i*ny + j]) / 2);
+
+
+
+			G[i*ny + j] = V[i*ny + j] + dt * (1 / Re * ((d2vdx2)+(d2vdy2)) - (duvdx)-dv2dy);
+
+		}
+	}
+
+	/*Set boundary values along the columns*/
+	for (j = 1; j <= jmax; j++){
+		/*F values on right and left boundaries*/
+		F[0 * ny + j] = U[0 * ny + j];
+		F[imax*ny + j] = U[imax*ny + j];
+	}
+
+	/*Set boundary values along the rows*/
+	for (i = 1; i <= imax; i++){
+		/*G values on top and bottom boundaries*/
+		G[i*ny + 0] = V[i*ny + 0];
+		G[i*ny + jmax] = V[i*ny + jmax];
+	}
+
+	//printf("FG ");
+
+}
+
+void calcRS(double dt,	double dx,	double dy,
+	int imax,int jmax,double *F,double *G,double *RS) 
+{
+	int i, j;
+	const int ny = jmax + 2;
+	for (i = 1; i <= imax; i++)
+		for (j = 1; j <= jmax; j++) 
+			RS[i*ny + j] = 
+				1 / dt*((F[i*ny + j] - F[(i - 1)*ny + j]) / dx + (G[i*ny + j] - G[i*ny + j - 1]) / dy);
+
+	//	printf("RS ");
+
+}
+
+void solveP(int max_iteration_time, double tolerance, double dx, double dy, int imax, int jmax,
+	double* P, double* TMP,double* RS,int main_iter,bool disp_res)
+{
+	const int ny = jmax + 2;
+	const int grid_size = (imax + 2)*(jmax + 2);
+	
+	/***************get init P field as the init value for iteration preparation**********/
+	for (int index = 0; index < grid_size; ++index)
+		TMP[index] = P[index];
+
+	double coeff = 2.0*(1.0 / dx / dx + 1.0 / dy / dy);
+
+	for (int iter = 0; iter <= max_iteration_time; ++iter)
+	{
+		/**********iterate solve***********/
+		for (int i = 1; i <= imax; i++) 
+		for (int j = 1; j <= jmax; j++)
+		{
+			const int cur = i*ny + j;
+
+			TMP[cur] = 0.25*(P[cur - 1] + P[cur + 1] + P[cur + ny] + P[cur - ny]) - RS[cur]/coeff;
+
+		}
+
+		/**********calc residual***********/
+#if 0
+		double residual = 0.0;
+		for (int i = 1; i <= imax; i++)
+		for (int j = 1; j <= jmax; j++)
+		{
+			const int cur = i*ny + j;
+
+			double curDp = 0.25*(TMP[cur - 1] + TMP[cur + 1] + TMP[cur + ny] + TMP[cur - ny]) - TMP[cur] - RS[cur] / coeff;
+			
+			residual += fabs(curDp);
+		}
+
+		residual /= (double)(imax*jmax);
+#else
+
+		double residual = 0.0;
+		for (int i = 1; i <= imax; i++)
+		for (int j = 1; j <= jmax; j++)
+		{
+			const int cur = i*ny + j;
+
+			double curDp = 0.25*(TMP[cur - 1] + TMP[cur + 1] + TMP[cur + ny] + TMP[cur - ny]) - TMP[cur] - RS[cur] / coeff;
+
+			residual = max(fabs(curDp), residual);
+		}
+
+#endif
+
+		/**********check converge***********/
+		if (residual < tolerance)
+		{
+			if (disp_res)
+				printf("iter=%6d   P iter=%6d   res=%e ",main_iter, iter, residual);
+
+			break;
+		}
+
+		if ((iter == max_iteration_time)&&(residual>tolerance))
+		{
+			printf("---------Pressure dosen't converge to the required accuracy!---------\n");
+
+		}
+
+		/************ set boundary values *************/
+		for (int i = 1; i <= imax; i++) {
+			TMP[i*ny + 0] = TMP[i*ny + 1];
+			TMP[i*ny + jmax + 1] = TMP[i*ny + jmax];
+		}
+		for (int j = 1; j <= jmax; j++) {
+			TMP[0 * ny + j] = TMP[1 * ny + j];
+			TMP[(imax + 1)*ny + j] = TMP[imax*ny + j];
+		}
+
+		/************copy value*******************/
+		for (int index = 0; index < grid_size; ++index)
+			P[index] = TMP[index];
+
+	}//loop solver
+
+}
+
+void calcUV(double dt,	double dx,	double dy,	int imax,int jmax,
+	double *U,	double *V,	double *F,	double *G,	double *P)
+{
+	int i;
+	int j;
+	const int ny = jmax + 2;
+
+	/*Calculate the new velocity U according to the formula above*/
+	for (i = 1; i <= (imax - 1); i++){
+		for (j = 1; j <= jmax; j++){
+			U[i*ny + j] = F[i*ny + j] - (dt / dx)*(P[(i + 1)*ny + j] - P[i*ny + j]);
+		}
+	}
+	/*Calculate the new velocity V according to the formula above*/
+	for (i = 1; i <= imax; i++){
+		for (j = 1; j <= (jmax - 1); j++){
+			V[i*ny + j] = G[i*ny + j] - (dt / dy)*(P[i*ny + j + 1] - P[i*ny + j]);
+		}
+	}
+}
+
+void checkCon(int imax, int jmax, double dx, double dy, double* U,double* V, double *res)
+{
+	int ny = jmax + 2;
+
+	double residual = 0.0;
+
+	for (int i = 1; i <= imax; i++)
+	for (int j = 1; j <= jmax; j++)
+	{
+		const int cur = i*ny + j;
+
+		residual += fabs((U[cur] - U[cur - ny]) / dx + (V[cur] - V[cur - 1]) / dy);
+
+	}
+
+	*res = residual / (double)(imax*jmax);
+	//*res = residual;
+
+
+}
+
+void output(long m,int nx,int ny,double*U,double*V,double*P)   //输出
+{
+	char filename[100];
+	FILE *fp;
+	sprintf(filename, "flow_%ld.plt", m);
+	if ((fp = fopen(filename, "w")) == NULL)
+		printf("cannot open the %s file\n", filename);
+	fputs("Title=\"Flow Field Calculated By FD\"\n", fp);
+	fputs("VARIABLES=\"X\",\"Y\",\"U\",\"V\",\"UV\",\"P\"\n", fp);
+	fprintf(fp, "ZONE T=\"BOX\",I=%d,J=%d,F=POINT\n", nx - 1, ny - 1);
+
+	int NY = ny;
+	for (int y = 0; y < nx - 1; ++y)
+	for (int x = 0; x < ny - 1; ++x)
+	{
+		int idx = x*ny + y;
+
+		float u_ = 0.5f*((float)U[idx] + (float)U[idx + 1]);
+		float v_ = 0.5f*((float)V[idx] + (float)V[idx + NY]);
+		float p_ = 0.25f*((float)P[idx] + (float)P[idx + 1] + (float)P[idx + NY] + (float)P[idx + NY + 1]);
+		fprintf(fp, "%d,%d,%6.4f,%6.4f,%6.4f,%6.4f\n",
+			x, y, u_, v_, sqrt(u_*u_ + v_*v_), p_);
+	}
+
+	fclose(fp);
+	printf("Write data done!\n", m);
+}
+
+int _tmain(int argc, _TCHAR* argv[])
+{
+	int imax;
+	int jmax;
+	
+	double dx;
+	double dy;
+	double dt;
+
+	double time_safety_factor;
+	double upwind_scheme_factor;
+	double visc;
+	double Re;//visc=1/Res
+	
+	double top_velocity;//bondary velocity on top edge
+	double init_u;
+	double init_v;
+	double init_p;
+
+	int max_iter;
+
+	double* U;
+	double* V;
+	double* P;
+	double* RS;
+	double* F;
+	double* G;
+
+	double* TMP;//用于辅助迭代的变量
+
+	/*****set init param**********/
+	imax = 20;
+	jmax = 20;
+	
+	dx = 0.01;//SI unit, m
+	dy = dx;
+	dt = 0.01;//default value, to check  it later
+
+	time_safety_factor = 0.5;
+	upwind_scheme_factor = 0.8;
+	visc = 1.0e-3;
+	Re = 1.0 / visc;
+
+	top_velocity = 1.0;
+	init_u = 0.0;
+	init_v = 0.0;
+	init_p = 0.0;
+
+	/*************allocate memory****************/
+	int grid_szie = (imax + 2)*(jmax + 2);
+	U = (double*)malloc(sizeof(double)*grid_szie);
+	V = (double*)malloc(sizeof(double)*grid_szie);
+	P = (double*)malloc(sizeof(double)*grid_szie);
+	RS = (double*)malloc(sizeof(double)*grid_szie);
+	F = (double*)malloc(sizeof(double)*grid_szie);
+	G = (double*)malloc(sizeof(double)*grid_szie);
+
+	TMP = (double*)malloc(sizeof(double)*grid_szie);
+
+
+	/*********set init value for field variables*********/
+	init_field(init_u, init_v, init_p, imax + 2, jmax + 2, U, V, P);
+
+	/*************calc time step*******************/
+	calcTimeStep(visc, top_velocity, dx, time_safety_factor, &dt);
+
+	printf("cfl1=%.3f, cfl2=%.3f\n", 4.0*visc*dt / dx / dx, dx / top_velocity);
+	
+	max_iter = 1e4;//时间步的次数
+
+	int output_iter = 100;
+
+	bool outputRes = false;
+
+	double RES = 0.0;
+
+	double TOL = 1.0e-7;
+
+	for (int iter = 0; iter <= max_iter; ++iter)
+	{
+		treatBoundary(top_velocity, imax, jmax, U, V);
+
+		calcFG(Re, upwind_scheme_factor, dt, dx, dy, imax, jmax, U, V, F, G);
+
+		calcRS(dt, dx, dy, imax, jmax, F, G, RS);
+
+		outputRes = (iter%output_iter == 0 ? true : false);
+
+		solveP(100000, 1.0e-8, dx, dy, imax, jmax, P, TMP, RS, iter, outputRes);
+
+		calcUV(dt, dx, dy, imax, jmax, U, V, F, G, P);
+
+		checkCon(imax, jmax, dx, dy, U, V, &RES);
+
+		if (outputRes)
+			printf(" EPS=%e\n", RES);
+
+	}
+
+	output(109, imax + 2, jmax + 2, U, V, P);
+
+
+	free(U);	free(V);	free(P);
+	free(RS);free(F);	free(G);
+	free(TMP);
+
+	return 0;
+}
